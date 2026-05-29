@@ -116,6 +116,28 @@ button {
   color: var(--muted);
 }
 
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(420px, 100%);
+  margin-top: 8px;
+  padding: 5px 8px;
+  color: var(--accent);
+  background: var(--surface-green);
+  border: 1px solid rgba(23, 78, 79, 0.12);
+  font-size: 0.75rem;
+  font-weight: 850;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.sync-pill.local {
+  color: #6d531c;
+  background: #fff7df;
+  border-color: rgba(224, 159, 62, 0.28);
+}
+
 .top-actions {
   display: flex;
   align-items: center;

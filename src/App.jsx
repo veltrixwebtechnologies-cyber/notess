@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Cloud,
+  CloudOff,
   Download,
   Edit3,
   FileText,
@@ -11,7 +13,9 @@ import {
   X
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import notesMark from "../assets/notes-mark.svg";
+import { firebaseNotes } from "./firebase";
 
 const STORAGE_KEY = "study-notes-organizer-react-v1";
 const spring = { type: "spring", stiffness: 420, damping: 34 };
@@ -137,11 +141,114 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState("updated");
   const [toast, setToast] = useState("");
+  const [syncStatus, setSyncStatus] = useState(
+    firebaseNotes.enabled ? "Connecting to Firebase" : "Local storage"
+  );
   const fileInputRef = useRef(null);
+  const initialStateRef = useRef(state);
+  const cloudReadyRef = useRef(!firebaseNotes.enabled);
+  const applyingCloudStateRef = useRef(false);
+  const lastCloudJsonRef = useRef("");
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+    if (!firebaseNotes.enabled || !cloudReadyRef.current) return undefined;
+
+    const stateJson = JSON.stringify(state);
+    if (applyingCloudStateRef.current) {
+      applyingCloudStateRef.current = false;
+      return undefined;
+    }
+    if (stateJson === lastCloudJsonRef.current) return undefined;
+
+    setSyncStatus("Saving to Firebase...");
+    const saveTimer = window.setTimeout(() => {
+      setDoc(
+        firebaseNotes.notesDocRef,
+        {
+          schemaVersion: 1,
+          state,
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      )
+        .then(() => {
+          lastCloudJsonRef.current = stateJson;
+          setSyncStatus("Synced to Firebase");
+        })
+        .catch((error) => {
+          setSyncStatus("Firebase save failed");
+          console.error("Could not save notes to Firebase", error);
+        });
+    }, 450);
+
+    return () => window.clearTimeout(saveTimer);
   }, [state]);
+
+  useEffect(() => {
+    if (!firebaseNotes.enabled) {
+      setSyncStatus("Local storage (Firebase config missing)");
+      return undefined;
+    }
+
+    setSyncStatus("Connecting to Firebase");
+    const unsubscribe = onSnapshot(
+      firebaseNotes.notesDocRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          const stateJson = JSON.stringify(initialStateRef.current);
+          setDoc(
+            firebaseNotes.notesDocRef,
+            {
+              schemaVersion: 1,
+              state: initialStateRef.current,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            },
+            { merge: true }
+          )
+            .then(() => {
+              lastCloudJsonRef.current = stateJson;
+              cloudReadyRef.current = true;
+              setSyncStatus("Synced to Firebase");
+            })
+            .catch((error) => {
+              setSyncStatus("Firebase setup failed");
+              console.error("Could not create Firebase notes document", error);
+            });
+          return;
+        }
+
+        const remoteState = snapshot.data()?.state;
+        if (!remoteState?.categories?.length) {
+          cloudReadyRef.current = true;
+          setSyncStatus("Firebase document is empty");
+          return;
+        }
+
+        const remoteJson = JSON.stringify(remoteState);
+        if (remoteJson === lastCloudJsonRef.current) {
+          cloudReadyRef.current = true;
+          setSyncStatus("Synced to Firebase");
+          return;
+        }
+
+        applyingCloudStateRef.current = true;
+        lastCloudJsonRef.current = remoteJson;
+        cloudReadyRef.current = true;
+        setState(remoteState);
+        setSyncStatus("Synced to Firebase");
+      },
+      (error) => {
+        cloudReadyRef.current = true;
+        setSyncStatus("Firebase connection failed");
+        console.error("Firebase notes subscription failed", error);
+      }
+    );
+
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -184,6 +291,10 @@ export default function App() {
       lastUpdated: updated.length ? formatDate(updated[0]) : "Never"
     };
   }, [activeCategory.notes]);
+
+  const syncDetails = firebaseNotes.enabled
+    ? `Workspace: ${firebaseNotes.workspaceId}`
+    : `Missing Firebase keys: ${firebaseNotes.missingKeys.join(", ")}`;
 
   function selectCategory(id) {
     setState((current) => ({ ...current, activeCategoryId: id }));
@@ -361,6 +472,13 @@ export default function App() {
           <div>
             <h1>Study Notes</h1>
             <p>Organize subjects, chapters, and quick notes in one clean space.</p>
+            <span
+              className={`sync-pill ${firebaseNotes.enabled ? "online" : "local"}`}
+              title={syncDetails}
+            >
+              {firebaseNotes.enabled ? <Cloud size={14} /> : <CloudOff size={14} />}
+              {syncStatus}
+            </span>
           </div>
         </div>
 

@@ -8,6 +8,7 @@ import {
   Plus,
   Save,
   Search,
+  Share2,
   Trash2,
   Upload,
   X
@@ -256,6 +257,45 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (firebaseNotes.enabled && firebaseNotes.workspaceId) {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("workspace") !== firebaseNotes.workspaceId) {
+        params.set("workspace", firebaseNotes.workspaceId);
+        const newUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+        window.history.replaceState({ path: newUrl }, "", newUrl);
+      }
+    }
+  }, []);
+
+  function shareWorkspace() {
+    if (!firebaseNotes.enabled) {
+      setToast("Firebase is not enabled");
+      return;
+    }
+    const shareUrl = `${window.location.origin}${window.location.pathname}?workspace=${firebaseNotes.workspaceId}`;
+    
+    if (navigator.share) {
+      navigator.share({
+        title: "Study Notes - Shared Workspace",
+        text: "Join my real-time collaborative Study Notes workspace!",
+        url: shareUrl
+      })
+      .then(() => setToast("Workspace shared successfully!"))
+      .catch((error) => {
+        if (error.name !== "AbortError") {
+          navigator.clipboard.writeText(shareUrl)
+            .then(() => setToast("Link copied to clipboard!"))
+            .catch(() => setToast("Failed to copy link"));
+        }
+      });
+    } else {
+      navigator.clipboard.writeText(shareUrl)
+        .then(() => setToast("Link copied to clipboard!"))
+        .catch(() => setToast("Failed to copy link"));
+    }
+  }
+
   const activeCategory = useMemo(() => {
     return (
       state.categories.find((category) => category.id === state.activeCategoryId) ||
@@ -494,6 +534,19 @@ export default function App() {
               autoComplete="off"
             />
           </label>
+          {firebaseNotes.enabled && (
+            <motion.button
+              className="icon-button"
+              type="button"
+              onClick={shareWorkspace}
+              title="Share workspace link"
+              whileHover={hoverMotion(reduceMotion, 1.04)}
+              whileTap={tapMotion(reduceMotion)}
+              transition={spring}
+            >
+              <Share2 size={18} />
+            </motion.button>
+          )}
           <motion.button
             className="icon-button"
             type="button"

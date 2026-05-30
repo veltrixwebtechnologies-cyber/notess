@@ -24,10 +24,18 @@ const missingKeys = requiredKeys.filter((key) => !firebaseConfig[key]);
 const isConfigured = missingKeys.length === 0;
 
 function getWorkspaceId() {
+  const params = new URLSearchParams(window.location.search);
+  const urlWorkspace = params.get("workspace")?.trim() || params.get("share")?.trim() || params.get("id")?.trim();
+  const storageKey = "study-notes-firebase-workspace-id";
+
+  if (urlWorkspace) {
+    localStorage.setItem(storageKey, urlWorkspace);
+    return urlWorkspace;
+  }
+
   const envWorkspace = import.meta.env.VITE_FIREBASE_WORKSPACE_ID?.trim();
   if (envWorkspace) return envWorkspace;
 
-  const storageKey = "study-notes-firebase-workspace-id";
   const existing = localStorage.getItem(storageKey);
   if (existing) return existing;
 
